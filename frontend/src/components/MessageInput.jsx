@@ -10,16 +10,16 @@ const MessageInput = () => {
   const { sendMessage } = useChatStore();
 
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
+      toast.error("Please select a valid image");
       return;
     }
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result);
-    };
+    reader.onloadend = () => setImagePreview(reader.result);
     reader.readAsDataURL(file);
   };
 
@@ -38,45 +38,60 @@ const MessageInput = () => {
         image: imagePreview,
       });
 
-      // Clear form
       setText("");
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      removeImage();
     } catch (error) {
-      console.error("Failed to send message:", error);
+      toast.error("Failed to send message");
+      console.error(error);
     }
   };
 
   return (
-    <div className="p-4 w-full">
+    <div className="p-4 w-full border-t border-base-300 bg-base-100 backdrop-blur-xl">
+
+      {/* IMAGE PREVIEW */}
       {imagePreview && (
-        <div className="mb-3 flex items-center gap-2">
-          <div className="relative">
+        <div className="mb-3">
+          <div className="relative inline-block">
             <img
               src={imagePreview}
               alt="Preview"
-              className="w-20 h-20 object-cover rounded-lg border border-zinc-700"
+              className="w-24 h-24 object-cover rounded-xl shadow border border-base-300"
             />
+
             <button
-              onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300 flex items-center justify-center"
               type="button"
+              onClick={removeImage}
+              className="
+                absolute -top-2 -right-2 size-6 rounded-full bg-base-300 
+                flex items-center justify-center
+                hover:bg-base-200 transition
+              "
             >
-              <X className="text-gray-800" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className="flex-1 flex gap-2">
+      {/* INPUT */}
+      <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+
+        {/* TEXT INPUT */}
+        <div className="flex-1 flex items-center gap-2">
           <input
             type="text"
-            className="w-full input input-bordered rounded-lg input-sm sm:input-md focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200"
             placeholder="Type a message..."
+            className="
+              input input-bordered w-full rounded-xl 
+              input-sm sm:input-md
+              focus:outline-none focus:ring focus:ring-primary/20
+            "
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
+
+          {/* Hidden file input */}
           <input
             type="file"
             accept="image/*"
@@ -85,22 +100,33 @@ const MessageInput = () => {
             onChange={handleImageChange}
           />
 
+          {/* IMAGE UPLOAD BUTTON */}
           <button
             type="button"
-            className={`btn btn-circle ${imagePreview ? "text-blue-600" : "text-zinc-400"} hover:bg-blue-50`}
             onClick={() => fileInputRef.current?.click()}
+            className="
+              btn btn-circle btn-ghost hover:bg-primary/10 transition-all
+            "
             title="Upload Image"
           >
-            <Image size={20} />
+            <Image className="w-5 h-5" />
           </button>
         </div>
+
+        {/* SEND BUTTON */}
         <button
           type="submit"
-          className={`px-4 py-2 rounded-lg transition duration-200 ${text.trim() || imagePreview ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-600"} flex items-center justify-center`}
           disabled={!text.trim() && !imagePreview}
+          className="
+            size-11 rounded-xl flex items-center justify-center
+            transition-all active:scale-90
+            text-white
+            disabled:bg-base-300 disabled:text-base-content/40
+            bg-primary hover:bg-primary/80
+          "
           title="Send Message"
         >
-          <Send size={22} />
+          <Send className="w-5 h-5" />
         </button>
       </form>
     </div>

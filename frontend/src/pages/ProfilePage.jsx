@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Camera, Mail, User } from "lucide-react";
-
 import { useAuthStore } from "../store/useAuthStore";
 
 const ProfilePage = () => {
@@ -30,31 +29,35 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="min-h-screen pt-20">
-      <div className="max-w-2xl mx-auto p-4 py-8">
-        <div className="bg-base-300 rounded-xl p-6 space-y-8">
-          <div className="text-center">
-            <h1 className="text-2xl font-semibold">Profile</h1>
-            <p className="mt-2">Your Profile Information</p>
-          </div>
+    <div className="min-h-screen pt-24 bg-base-200 flex justify-center px-4">
+      <div className="w-full max-w-3xl">
 
-          {/* Avatar Upload */}
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
+        {/* HEADER */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold tracking-tight">My Profile</h1>
+          <p className="text-zinc-400 mt-2 text-sm">Manage your account information</p>
+        </div>
+
+        {/* MAIN CARD */}
+        <div className="bg-base-300/40 backdrop-blur-xl p-8 rounded-2xl shadow-xl border border-base-300">
+          
+          {/* AVATAR */}
+          <div className="flex flex-col items-center">
+            <div className="relative group">
               <img
                 src={selectedImg || authUser.profilePic || "/avatar.png"}
-                alt={`Profile picture of ${authUser?.fullName || "user"}`}
-                className="size-32 rounded-full object-cover border-4"
-                loading="lazy"
+                alt="Profile avatar"
+                className="size-36 rounded-full object-cover border-4 border-base-100 shadow-md transition-all duration-300 group-hover:scale-105"
               />
+
+              {/* Upload Btn */}
               <label
                 htmlFor="avatar-upload"
-                className={`absolute bottom-0 right-0 bg-base-content hover:scale-105
-                  p-2 rounded-full cursor-pointer transition-all duration-200
-                  ${isUpdatingProfile ? "animate-pulse pointer-events-none" : ""}
-                `}
+                className={`absolute bottom-1 right-1 bg-primary text-white p-2 rounded-full shadow-md cursor-pointer
+                transition-all duration-200 hover:scale-110 
+                ${isUpdatingProfile ? "animate-pulse pointer-events-none" : ""}`}
               >
-                <Camera className="w-h h-5 text-base-200" />
+                <Camera className="h-5 w-5" />
                 <input
                   type="file"
                   id="avatar-upload"
@@ -65,45 +68,57 @@ const ProfilePage = () => {
                 />
               </label>
             </div>
-            <p className="text-sm text-zinc-400">
-              {isUpdatingProfile ? "Uploading..." : "Upload a new profile picture"}
+
+            <p className="text-xs text-zinc-400 mt-2">
+              {isUpdatingProfile ? "Uploading..." : "Click the camera to update photo"}
             </p>
           </div>
 
-          {/* Profile Info */}
-          <div className="space-y-6">
-            <div className="space-y-1.5">
-              <div className="text-sm text-zinc-400 flex items-center gap-2">
-                <User className="size-4" />
-                Full Name
+          {/* PROFILE INFO */}
+          <div className="mt-10 space-y-6">
+
+            {/* NAME */}
+            <div className="space-y-1">
+              <label className="text-sm text-zinc-400 flex items-center gap-2">
+                <User className="size-4" /> Full Name
+              </label>
+
+              <div className="bg-base-200 border border-base-300 rounded-lg p-3 px-4 text-sm font-medium">
+                {authUser?.fullName}
               </div>
-              <p className="px-4 py-2.5 bg-base-200 rounded-lg border">{authUser?.fullName}</p>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="text-sm text-zinc-400 flex items-center gap-2">
-                <Mail className="size-4" />
-                Email Address
+            {/* EMAIL */}
+            <div className="space-y-1">
+              <label className="text-sm text-zinc-400 flex items-center gap-2">
+                <Mail className="size-4" /> Email Address
+              </label>
+
+              <div className="bg-base-200 border border-base-300 rounded-lg p-3 px-4 text-sm font-medium">
+                {authUser?.email}
               </div>
-              <p className="px-4 py-2.5 bg-base-200 rounded-lg border">{authUser?.email}</p>
             </div>
           </div>
 
-          {/* Account Settings */}
-          <div className="mt-6 bg-base-300 rounded-xl p-6">
-            <h2 className="text-lg font-medium mb-4">Account Settings</h2>
+          {/* ACCOUNT SETTINGS */}
+          <div className="mt-10 bg-base-200/60 border border-base-300 rounded-xl p-6">
+            <h2 className="text-lg font-semibold mb-4">Account Settings</h2>
+
             <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between py-2 border-b border-zinc-700">
-                <span>Member Since</span>
-                <span>{authUser.createdAt?.split("T")[0]}</span>
+              <div className="flex items-center justify-between py-2 border-b border-base-300">
+                <span className="text-zinc-400">Member Since</span>
+                <span className="font-medium">{authUser.createdAt?.split("T")[0]}</span>
               </div>
+
               <div className="flex items-center justify-between py-2">
-                <span>Account Status</span>
-                <span className="text-green-500">Active</span>
+                <span className="text-zinc-400">Account Status</span>
+                <span className="text-green-500 font-semibold">Active</span>
               </div>
             </div>
           </div>
         </div>
+
+        <div className="h-10" />
       </div>
     </div>
   );
