@@ -4,7 +4,12 @@ import bcrypt from "bcrypt";
 import cloudinary from "../lib/cloudinary.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_IMAGE = /^data:image\/(png|jpe?g|webp|gif);base64,/;
 const MAX_NAME_LENGTH = 50;
+const MAX_PASSWORD_BYTES = 72; // bcrypt ignores everything after 72 bytes
+
+// compared against when the email does not exist, so both cases take the same time
+const DUMMY_HASH = bcrypt.hashSync("onlychat-dummy-password", 10);
 
 const isNonEmptyString = (value) =>
   typeof value === "string" && value.trim().length > 0;
@@ -38,6 +43,9 @@ export const signup = async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    if (Buffer.byteLength(password) > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ message: "Password is too long (72 characters max)" });
     }
 
     // also check the typed case, for accounts created before emails were lowercased
@@ -80,6 +88,11 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
+    // never run bcrypt on absurdly long input
+    if (Buffer.byteLength(password) > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ message: "Invalid email or password" });
+    }
+
     const typedEmail = email.trim();
     const cleanEmail = typedEmail.toLowerCase();
 
@@ -89,12 +102,13 @@ export const login = async (req, res) => {
       user = await User.findOne({ email: typedEmail });
     }
 
-    if (!user) {
-      return res.status(400).json({ message: "Invalid email or password" });
-    }
+    // always run one bcrypt comparison, whether or not the user exists
+    const isPasswordCorrect = await bcrypt.compare(
+      password,
+      user ? user.password : DUMMY_HASH
+    );
 
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
-    if (!isPasswordCorrect) {
+    if (!user || !isPasswordCorrect) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
@@ -115,7 +129,11 @@ export const login = async (req, res) => {
 
 export const logout = (req, res) => {
   try {
-    res.cookie("jwt", "", { maxAge: 0 });
+    res.clearCookie("jwt", {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV !== "development",
+    });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     console.log("Error in logout controller", error.message);
@@ -142,11 +160,15 @@ export const updateProfile = async (req, res) => {
     }
 
     if (profilePic !== undefined) {
-      // only accept an uploaded image (base64 data URL), never a remote URL
-      if (typeof profilePic !== "string" || !profilePic.startsWith("data:image/")) {
-        return res.status(400).json({ message: "Profile picture must be an image" });
+      // only real image uploads (no SVG, no remote URLs)
+      if (typeof profilePic !== "string" || !ALLOWED_IMAGE.test(profilePic)) {
+        return res.status(400).json({ message: "Profile picture must be a PNG, JPG, WebP or GIF image" });
       }
-      const uploadResponse = await cloudinary.uploader.upload(profilePic);
+      const uploadResponse = await cloudinary.uploader.upload(profilePic, {
+        folder: "onlychat/avatars",
+        resource_type: "image",
+        transformation: [{ width: 512, height: 512, crop: "fill", gravity: "auto" }],
+      });
       update.profilePic = uploadResponse.secure_url;
     }
 

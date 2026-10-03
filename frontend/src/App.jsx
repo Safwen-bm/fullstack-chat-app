@@ -20,7 +20,7 @@ const App = () => {
   const { authUser, checkAuth, isCheckingAuth, socket } = useAuthStore();
   const { theme } = useThemeStore();
   const unreadTotal = useChatStore((s) =>
-    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0)
+    s.users.reduce((sum, u) => sum + (u.unreadCount || 0), 0)
   );
 
   useEffect(() => {

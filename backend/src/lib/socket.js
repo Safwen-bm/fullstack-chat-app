@@ -76,6 +76,20 @@ io.on("connection", (socket) => {
   // the new client needs the current list even if the user was already online
   emitOnlineUsers();
 
+   // typing indicator: forward to the other user's room (throttled)
+  let lastTypingAt = 0;
+  socket.on("typing", ({ to, isTyping } = {}) => {
+    if (typeof to !== "string" || !/^[a-f0-9]{24}$/i.test(to)) return;
+
+    if (isTyping) {
+      const now = Date.now();
+      if (now - lastTypingAt < 300) return;
+      lastTypingAt = now;
+    }
+
+    socket.to(to).emit("typing", { from: userId, isTyping: Boolean(isTyping) });
+  });
+
   socket.on("disconnect", () => {
     const current = userSockets.get(userId);
     if (!current) return;

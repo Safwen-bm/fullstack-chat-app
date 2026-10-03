@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { useChatStore } from "../store/useChatStore";
 
 const SECTION_LINKS = [
   { id: "features", label: "Features", icon: Sparkles },
@@ -47,6 +48,7 @@ const Navbar = () => {
   const location = useLocation();
   const path = location.pathname;
   const onLanding = path === "/";
+  const inConversation = useChatStore((s) => path === "/chat" && !!s.selectedUser);
 
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -99,7 +101,11 @@ const Navbar = () => {
   }, [onLanding]);
 
   return (
-    <header className="fixed inset-x-0 top-3 z-50 px-3">
+    <header 
+      className={`fixed inset-x-0 top-3 z-50 px-3 ${
+        inConversation ? "hidden lg:block" : ""
+      }`}
+    >
       {/* backdrop for the mobile menu */}
       {open && (
         <div
