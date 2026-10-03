@@ -1,157 +1,167 @@
 import React, { useState } from "react";
-import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare, User } from "lucide-react";
 import { Link } from "react-router-dom";
-import toast from "react-hot-toast";
+import { ArrowRight, Loader2, Lock, Mail, User } from "lucide-react";
 
 import { useAuthStore } from "../store/useAuthStore";
-import AuthImagePattern from "../components/AuthImagePattern";
+import {
+  validateEmail,
+  validateFullName,
+  validatePassword,
+} from "../lib/validation";
+import AuthLayout from "../components/auth/AuthLayout";
+import AuthField from "../components/auth/AuthField";
+
+const MIN_PASSWORD = 6;
+
+const STRENGTH = [
+  { label: "Too short", color: "bg-error" },
+  { label: "Weak", color: "bg-error" },
+  { label: "Okay", color: "bg-warning" },
+  { label: "Good", color: "bg-info" },
+  { label: "Strong", color: "bg-success" },
+];
+
+const getStrength = (pw) => {
+  let score = 0;
+  if (pw.length >= MIN_PASSWORD) score++;
+  if (pw.length >= 10) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  return score;
+};
+
+const PasswordStrength = ({ password }) => {
+  if (!password) return null;
+  const score = getStrength(password);
+  const filled = Math.max(score, 1);
+  const level = STRENGTH[score];
+
+  return (
+    <div className="mt-2 flex items-center gap-3">
+      <div className="flex flex-1 gap-1">
+        {[0, 1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
+              i < filled ? level.color : "bg-base-300"
+            }`}
+          />
+        ))}
+      </div>
+      <span className="w-16 text-right text-xs text-base-content/60">{level.label}</span>
+    </div>
+  );
+};
 
 const SignUpPage = () => {
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    password: "",
-  });
-
+  const [formData, setFormData] = useState({ fullName: "", email: "", password: "" });
+  const [errors, setErrors] = useState({});
   const { signup, isSigningUp } = useAuthStore();
 
-  const validateForm = () => {
-    if (!formData.fullName.trim()) return toast.error("Full name is required.");
-    
-    if (!formData.email.trim()) return toast.error("Email is required.");
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; 
-    if (!emailPattern.test(formData.email)) return toast.error("Please enter a valid email address.");
-
-    if (!formData.password) return toast.error("Password is required.");
-    if (formData.password.length < 6) return toast.error("Password must be at least 6 characters long.");
-  
-    return true; 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    const success = validateForm();
-    if (success === true) signup(formData);
+    if (isSigningUp) return;
+
+    const next = {
+      fullName: validateFullName(formData.fullName),
+      email: validateEmail(formData.email),
+      password: validatePassword(formData.password, MIN_PASSWORD),
+    };
+    setErrors(next);
+
+    const firstInvalid = Object.keys(next).find((key) => next[key]);
+    if (firstInvalid) {
+      e.currentTarget.elements[firstInvalid]?.focus();
+      return;
+    }
+
+    signup({
+      fullName: formData.fullName.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+    });
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-base-200">
+    <AuthLayout
+      variant="signup"
+      title="Create account"
+      subtitle="Get started with your free account"
+      showcaseTitle="Join the conversation"
+      showcaseSubtitle="Connect with friends, share moments, and stay close to the people you care about."
+      footer={
+        <p>
+          Already have an account?{" "}
+          <Link to="/login" className="link link-primary font-medium">
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <AuthField
+          label="Full name"
+          icon={User}
+          name="fullName"
+          autoComplete="name"
+          autoFocus
+          placeholder="Who are you?"
+          value={formData.fullName}
+          onChange={handleChange}
+          error={errors.fullName}
+        />
 
-      {/* Left LOGO + FORM */}
-      <div className="flex flex-cols justify-center items-center p-6 sm:p-12">
-        <div className="w-full max-w-md bg-base-100/60 backdrop-blur-xl
-         border border-base-300/50 rounded-2xl shadow-xl p-10
-         animate-fadeIn">
+        <AuthField
+          label="Email"
+          icon={Mail}
+          type="email"
+          name="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          value={formData.email}
+          onChange={handleChange}
+          error={errors.email}
+        />
 
-          {/* Logo */}
-          <div className="text-center mb-10">
-            <div className="flex flex-col items-center gap-3 group">
-              <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center
-                shadow-inner transition-all duration-300 group-hover:bg-primary/20 group-hover:scale-105">
-                <MessageSquare className="size-7 text-primary" />
-              </div>
-              <h1 className="text-3xl font-bold mt-2">Create Account</h1>
-              <p className="text-base-content/60">Get started with your free account</p>
-            </div>
-          </div>
+        <AuthField
+          label="Password"
+          icon={Lock}
+          type="password"
+          name="password"
+          autoComplete="new-password"
+          placeholder="At least 6 characters"
+          value={formData.password}
+          onChange={handleChange}
+          error={errors.password}
+        >
+          <PasswordStrength password={formData.password} />
+        </AuthField>
 
-          {/* FORM */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-
-            {/* FULL NAME */}
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-medium">Full Name</span>
-              </label>
-              <div className="relative">
-                <User className="absolute top-3 left-3 size-5 text-base-content/40 pointer-events-none" />
-                <input
-                  type="text"
-                  className="input input-bordered w-full pl-10 rounded-xl"
-                  placeholder="Who Are You"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                />
-              </div>
-            </div>
-
-            {/* EMAIL */}
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-medium">Email</span>
-              </label>
-              <div className="relative">
-                <Mail className="absolute top-3 left-3 size-5 text-base-content/40 pointer-events-none" />
-                <input
-                  type="email"
-                  className="input input-bordered w-full pl-10 rounded-xl"
-                  placeholder="you@example.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-            </div>
-
-            {/* PASSWORD */}
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-medium">Password</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute top-3 left-3 size-5 text-base-content/40 pointer-events-none" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  className="input input-bordered w-full pl-10 rounded-xl"
-                  placeholder="********"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-base-content/40 hover:text-base-content"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
-                </button>
-              </div>
-            </div>
-
-            {/* BUTTON */}
-            <button
-              type="submit"
-              className="btn btn-primary w-full rounded-xl shadow-md hover:shadow-lg transition-all"
-              disabled={isSigningUp}
-            >
-              {isSigningUp ? (
-                <>
-                  <Loader2 className="size-5 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Create Account"
-              )}
-            </button>
-          </form>
-
-          {/* FOOTER */}
-          <div className="text-center mt-6">
-            <p className="text-base-content/60">
-              Already have an account?{" "}
-              <Link to="/login" className="link link-primary">
-                Sign in
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Side Image */}
-      <AuthImagePattern
-        title="Join our community"
-        subtitle="Connect with friends, share moments, and stay in touch with your loved ones."
-      />
-    </div>
+        <button
+          type="submit"
+          disabled={isSigningUp}
+          className="btn btn-primary w-full gap-2 rounded-xl text-base shadow-lg shadow-primary/30"
+        >
+          {isSigningUp ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              Creating account...
+            </>
+          ) : (
+            <>
+              Create Account
+              <ArrowRight className="size-5" />
+            </>
+          )}
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 
