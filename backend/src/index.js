@@ -89,6 +89,9 @@ if (isProduction) {
         } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
           // hashed file names: safe to cache for a year
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (filePath.includes(`${path.sep}landing${path.sep}`)) {
+          // images keep their names, so cache for a day only
+          res.setHeader("Cache-Control", "public, max-age=86400");
         }
       },
     })

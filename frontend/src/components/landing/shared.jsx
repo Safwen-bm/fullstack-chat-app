@@ -57,6 +57,7 @@ export const LandingImage = ({
       src={src}
       alt={alt}
       loading="lazy"
+      decoding="async"
       onError={() => setFailed(true)}
       className={`object-cover ${className}`}
     />
@@ -85,6 +86,7 @@ export const Avatar = ({
       <img
         src={src}
         alt={name}
+        decoding="async"
         onError={() => setFailed(true)}
         className={`${size} rounded-full object-cover`}
       />

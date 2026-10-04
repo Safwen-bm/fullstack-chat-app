@@ -1,0 +1,44 @@
+OnlyChat - Proprietary License
+
+Copyright (c) 2024-2026 Safwen Ben Mabrouk. All rights reserved.
+
+1. OWNERSHIP
+This software and its source code, documentation, design and assets (the
+"Software") are the exclusive property of Safwen Ben Mabrouk (the "Author").
+No ownership or license rights are transferred except as expressly stated here.
+
+2. PERMISSION TO VIEW
+Permission is granted to view the source code of the Software for personal,
+non-commercial evaluation only, for example a review of the Author's work by
+recruiters, employers, or other developers.
+
+3. RESTRICTIONS
+Except as stated in section 2, without prior written permission from the
+Author you may not:
+  a. copy, reproduce, or republish the Software or any part of it;
+  b. modify, adapt, or create derivative works based on the Software;
+  c. distribute, sublicense, sell, rent, or lease the Software;
+  d. host, deploy, or operate the Software or any derivative of it;
+  e. use the Software, or any part of it, in a commercial or production
+     environment;
+  f. use the Software to train machine learning models.
+
+4. THIRD-PARTY COMPONENTS
+The Software depends on open source libraries (including React, Express,
+Socket.IO, Mongoose, Tailwind CSS and daisyUI). Those components remain under
+their own licenses, which are not changed by this license.
+
+5. PERMISSION REQUESTS
+To request permission for any use not allowed above, contact the Author at
+safwenbenmabrouk@gmail.com.
+
+6. NO WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM, OUT
+OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+7. TERMINATION
+Any use of the Software that violates this license automatically terminates
+the permission granted in section 2.
