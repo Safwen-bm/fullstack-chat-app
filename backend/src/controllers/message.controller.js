@@ -3,11 +3,22 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
+import { destroyImageByUrl } from "../lib/images.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 
 const MAX_TEXT_LENGTH = 2000;
 const DEFAULT_PAGE_SIZE = 40;
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const ALLOWED_IMAGE = /^data:image\/(png|jpe?g|webp|gif);base64,/;
+
+// tells the other person's screens that a message changed
+const emitMessageUpdate = (message, actorId) => {
+  const otherId =
+    String(message.senderId) === String(actorId) ? message.receiverId : message.senderId;
+  const room = getReceiverSocketId(otherId);
+  if (room) io.to(room).emit("messageUpdated", message.toObject());
+};
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -28,9 +39,9 @@ export const getUsersForSidebar = async (req, res) => {
         },
       ]),
 
-      // unread messages per sender
+      // unread messages per sender (deleted ones do not count)
       Message.aggregate([
-        { $match: { receiverId: myId, seen: false } },
+        { $match: { receiverId: myId, seen: false, deleted: { $ne: true } } },
         { $group: { _id: "$senderId", count: { $sum: 1 } } },
       ]),
     ]);
@@ -44,8 +55,10 @@ export const getUsersForSidebar = async (req, res) => {
         ...user,
         lastMessage: last
           ? {
+              _id: last._id,
               text: last.text || "",
               hasImage: !!last.image,
+              deleted: !!last.deleted,
               senderId: last.senderId,
               createdAt: last.createdAt,
             }
@@ -193,6 +206,136 @@ export const markMessagesAsRead = async (req, res) => {
     res.status(200).json({ updated: result.modifiedCount });
   } catch (error) {
     console.log("Error in markMessagesAsRead: ", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const editMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const myId = req.user._id;
+
+    if (!mongoose.isValidObjectId(messageId)) {
+      return res.status(400).json({ message: "Invalid message id" });
+    }
+
+    const { text } = req.body ?? {};
+    const cleanText = typeof text === "string" ? text.trim() : "";
+
+    if (!cleanText) {
+      return res.status(400).json({ message: "A message cannot be empty" });
+    }
+    if (cleanText.length > MAX_TEXT_LENGTH) {
+      return res
+        .status(400)
+        .json({ message: `Messages are limited to ${MAX_TEXT_LENGTH} characters` });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    if (String(message.senderId) !== String(myId)) {
+      return res.status(403).json({ message: "You can only edit your own messages" });
+    }
+    if (message.deleted) {
+      return res.status(400).json({ message: "This message was deleted" });
+    }
+    if (!message.text) {
+      return res.status(400).json({ message: "Only text messages can be edited" });
+    }
+    if (Date.now() - message.createdAt.getTime() > EDIT_WINDOW_MS) {
+      return res.status(400).json({ message: "Messages can only be edited for 15 minutes" });
+    }
+
+    if (cleanText !== message.text) {
+      message.text = cleanText;
+      message.editedAt = new Date();
+      await message.save();
+      emitMessageUpdate(message, myId);
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    console.log("Error in editMessage: ", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const myId = req.user._id;
+
+    if (!mongoose.isValidObjectId(messageId)) {
+      return res.status(400).json({ message: "Invalid message id" });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    if (String(message.senderId) !== String(myId)) {
+      return res.status(403).json({ message: "You can only delete your own messages" });
+    }
+    if (message.deleted) return res.status(200).json(message);
+
+    const imageUrl = message.image;
+
+    // keep a placeholder row so the conversation does not shift
+    message.deleted = true;
+    message.deletedAt = new Date();
+    message.text = "";
+    message.image = undefined;
+    message.reactions = [];
+    await message.save();
+
+    if (imageUrl) destroyImageByUrl(imageUrl);
+
+    emitMessageUpdate(message, myId);
+    res.status(200).json(message);
+  } catch (error) {
+    console.log("Error in deleteMessage: ", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const reactToMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const myId = req.user._id;
+    const { emoji } = req.body ?? {};
+
+    if (!mongoose.isValidObjectId(messageId)) {
+      return res.status(400).json({ message: "Invalid message id" });
+    }
+    // null removes my reaction
+    if (emoji !== null && !REACTION_EMOJIS.includes(emoji)) {
+      return res.status(400).json({ message: "Unsupported reaction" });
+    }
+
+    const message = await Message.findById(messageId).select("senderId receiverId deleted");
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [message.senderId, message.receiverId].some(
+      (id) => String(id) === String(myId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ message: "You cannot react to this message" });
+    }
+    if (message.deleted) {
+      return res.status(400).json({ message: "This message was deleted" });
+    }
+
+    // atomic updates so two people reacting at once never overwrite each other
+    await Message.updateOne({ _id: messageId }, { $pull: { reactions: { userId: myId } } });
+    if (emoji) {
+      await Message.updateOne({ _id: messageId }, { $push: { reactions: { userId: myId, emoji } } });
+    }
+
+    const updated = await Message.findById(messageId);
+    emitMessageUpdate(updated, myId);
+    res.status(200).json(updated);
+  } catch (error) {
+    console.log("Error in reactToMessage: ", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 };

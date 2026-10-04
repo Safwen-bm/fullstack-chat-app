@@ -2,7 +2,9 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { getErrorMessage } from "../lib/errors";
+import { playNotificationSound, showDesktopNotification } from "../lib/notify";
 import { useAuthStore } from "./useAuthStore";
+import { usePreferencesStore } from "./usePreferencesStore";
 
 const PAGE_SIZE = 40;
 
@@ -12,14 +14,24 @@ let activeHandlers = null;
 const typingTimers = {};
 
 const toLastMessage = (m) => ({
+  _id: m._id,
   text: m.text || "",
   hasImage: !!m.image,
+  deleted: !!m.deleted,
   senderId: m.senderId,
   createdAt: m.createdAt,
 });
 
 const withLastMessage = (users, userId, message) =>
   users.map((u) => (u._id === userId ? { ...u, lastMessage: toLastMessage(message) } : u));
+
+const replaceMessage = (messages, updated) =>
+  messages.map((m) => (m._id === updated._id ? updated : m));
+
+const refreshLastMessage = (users, updated) =>
+  users.map((u) =>
+    u.lastMessage?._id === updated._id ? { ...u, lastMessage: toLastMessage(updated) } : u
+  );
 
 export const useChatStore = create((set, get) => ({
   messages: [],
@@ -30,6 +42,7 @@ export const useChatStore = create((set, get) => ({
   isMessagesLoading: false,
   isLoadingOlder: false,
   typingUsers: {}, // { userId: boolean }
+  editingMessage: null,
 
   getUsers: async ({ silent = false } = {}) => {
     if (!silent) set({ isUsersLoading: true });
@@ -106,6 +119,7 @@ export const useChatStore = create((set, get) => ({
       image,
       createdAt: new Date().toISOString(),
       seen: false,
+      reactions: [],
       pending: true,
     };
 
@@ -125,6 +139,67 @@ export const useChatStore = create((set, get) => ({
       set((state) => ({ messages: state.messages.filter((m) => m._id !== tempId) }));
       toast.error(getErrorMessage(error));
       return false;
+    }
+  },
+
+  // used by every edit, delete and reaction, local or coming from the socket
+  applyMessageUpdate: (updated) =>
+    set((state) => ({
+      messages: replaceMessage(state.messages, updated),
+      users: refreshLastMessage(state.users, updated),
+    })),
+
+  setEditingMessage: (editingMessage) => set({ editingMessage }),
+
+  editMessage: async (messageId, text) => {
+    try {
+      const res = await axiosInstance.patch(`/messages/item/${messageId}`, { text });
+      get().applyMessageUpdate(res.data);
+      return true;
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+      return false;
+    }
+  },
+
+  deleteMessage: async (messageId) => {
+    try {
+      const res = await axiosInstance.delete(`/messages/item/${messageId}`);
+      get().applyMessageUpdate(res.data);
+      if (get().editingMessage?._id === messageId) set({ editingMessage: null });
+      return true;
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+      return false;
+    }
+  },
+
+  // same emoji again removes it, another emoji replaces mine
+  toggleReaction: async (messageId, emoji) => {
+    const myId = useAuthStore.getState().authUser?._id;
+    const current = get().messages.find((m) => m._id === messageId);
+    if (!current || !myId) return;
+
+    const mine = current.reactions?.find((r) => String(r.userId) === myId);
+    const nextEmoji = mine?.emoji === emoji ? null : emoji;
+
+    // show it instantly, fix it if the server refuses
+    get().applyMessageUpdate({
+      ...current,
+      reactions: [
+        ...(current.reactions ?? []).filter((r) => String(r.userId) !== myId),
+        ...(nextEmoji ? [{ userId: myId, emoji: nextEmoji }] : []),
+      ],
+    });
+
+    try {
+      const res = await axiosInstance.put(`/messages/item/${messageId}/reaction`, {
+        emoji: nextEmoji,
+      });
+      get().applyMessageUpdate(res.data);
+    } catch (error) {
+      get().applyMessageUpdate(current);
+      toast.error(getErrorMessage(error));
     }
   },
 
@@ -153,9 +228,10 @@ export const useChatStore = create((set, get) => ({
       const { selectedUser, users } = get();
       const isOpen = selectedUser?._id === senderId;
       const isVisible = document.visibilityState === "visible";
+      const sender = users.find((u) => u._id === senderId);
 
       // someone new wrote to me: reload the list quietly
-      if (!users.some((u) => u._id === senderId)) get().getUsers({ silent: true });
+      if (!sender) get().getUsers({ silent: true });
 
       set((state) => ({
         messages:
@@ -174,16 +250,47 @@ export const useChatStore = create((set, get) => ({
         typingUsers: { ...state.typingUsers, [senderId]: false },
       }));
 
-      if (isOpen && isVisible) {
-        get().markAsRead(senderId);
-      } else if (!isOpen) {
-        const sender = users.find((u) => u._id === senderId);
+      if (isOpen && isVisible) get().markAsRead(senderId);
+
+      // alerts only when the user is not already looking at this chat
+      if (!isOpen || !isVisible) {
         const preview = msg.text ? msg.text : "📷 Photo";
-        toast(`${sender?.fullName ?? "New message"}: ${preview.slice(0, 60)}`, {
-          id: `msg-${senderId}`,
-          icon: "💬",
-        });
+        const prefs = usePreferencesStore.getState();
+
+        if (!isOpen) {
+          toast(`${sender?.fullName ?? "New message"}: ${preview.slice(0, 60)}`, {
+            id: `msg-${senderId}`,
+            icon: "💬",
+          });
+        }
+        if (prefs.soundEnabled) playNotificationSound();
+        if (!isVisible && prefs.desktopNotifications) {
+          showDesktopNotification({
+            title: sender?.fullName ?? "New message",
+            body: preview.slice(0, 120),
+            tag: senderId,
+            onClick: () => {
+              const user = get().users.find((u) => u._id === senderId);
+              if (user) get().setSelectedUser(user);
+            },
+          });
+        }
       }
+    };
+
+    const handleMessageUpdated = (msg) => {
+      const myId = useAuthStore.getState().authUser?._id;
+      const senderId = String(msg.senderId);
+      const wasUnreadForMe = msg.deleted && String(msg.receiverId) === myId && !msg.seen;
+
+      set((state) => ({
+        messages: replaceMessage(state.messages, msg),
+        users: refreshLastMessage(state.users, msg).map((u) =>
+          wasUnreadForMe && u._id === senderId && u.unreadCount > 0
+            ? { ...u, unreadCount: u.unreadCount - 1 }
+            : u
+        ),
+      }));
     };
 
     const handleTyping = ({ from, isTyping }) => {
@@ -221,6 +328,7 @@ export const useChatStore = create((set, get) => ({
     };
 
     socket.on("newMessage", handleNewMessage);
+    socket.on("messageUpdated", handleMessageUpdated);
     socket.on("typing", handleTyping);
     socket.on("messagesSeen", handleMessagesSeen);
     socket.on("connect", handleConnect);
@@ -228,6 +336,7 @@ export const useChatStore = create((set, get) => ({
     activeSocket = socket;
     activeHandlers = {
       newMessage: handleNewMessage,
+      messageUpdated: handleMessageUpdated,
       typing: handleTyping,
       messagesSeen: handleMessagesSeen,
       connect: handleConnect,
@@ -253,6 +362,7 @@ export const useChatStore = create((set, get) => ({
         hasMoreMessages: sameUser ? state.hasMoreMessages : false,
         isMessagesLoading: sameUser ? state.isMessagesLoading : Boolean(selectedUser),
         isLoadingOlder: false,
+        editingMessage: sameUser ? state.editingMessage : null,
       };
     });
 
@@ -274,6 +384,7 @@ export const useChatStore = create((set, get) => ({
       isMessagesLoading: false,
       isLoadingOlder: false,
       typingUsers: {},
+      editingMessage: null,
     });
   },
 }));

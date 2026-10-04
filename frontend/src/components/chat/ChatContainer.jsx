@@ -229,6 +229,7 @@ const ChatContainer = () => {
                     key={item.key}
                     message={item.message}
                     isOwn={item.message.senderId === authUserId}
+                    myId={authUserId}
                     startsGroup={item.startsGroup}
                     endsGroup={item.endsGroup}
                     avatarSrc={peerPic}

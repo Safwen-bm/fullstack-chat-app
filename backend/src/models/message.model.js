@@ -1,5 +1,17 @@
 import mongoose from "mongoose";
 
+const reactionSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    emoji: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const messageSchema = new mongoose.Schema(
   {
     senderId: {
@@ -24,6 +36,20 @@ const messageSchema = new mongoose.Schema(
     },
     seenAt: {
       type: Date,
+    },
+    editedAt: {
+      type: Date,
+    },
+    deleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    reactions: {
+      type: [reactionSchema],
+      default: [],
     },
   },
   { timestamps: true }

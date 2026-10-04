@@ -46,3 +46,22 @@ export const profileLimiter = rateLimit({
   keyGenerator: userKey,
   handler: reply("Too many profile updates. Try again later."),
 });
+
+// edit, delete and react
+export const messageActionLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 1000,
+  limit: 60,
+  keyGenerator: userKey,
+  handler: reply("Too many actions. Slow down a little."),
+});
+
+// change password and delete account: only wrong attempts count
+export const passwordLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: userKey,
+  handler: reply("Too many attempts. Try again in an hour."),
+});

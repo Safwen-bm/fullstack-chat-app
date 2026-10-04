@@ -30,3 +30,17 @@ export const protectRoute = async (req, res, next) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+// like protectRoute, but a missing or invalid session is not an error
+export const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.cookies?.jwt;
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findById(decoded.userId).select("-password");
+    }
+  } catch {
+    // expired or invalid token: treat the visitor as logged out
+  }
+  next();
+};

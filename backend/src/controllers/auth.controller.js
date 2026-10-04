@@ -1,6 +1,9 @@
-import { generateToken } from "../lib/utils.js";
-import User from "../models/user.model.js";
 import bcrypt from "bcrypt";
+import User from "../models/user.model.js";
+import Message from "../models/message.model.js";
+import { generateToken } from "../lib/utils.js";
+import { destroyImageByUrl } from "../lib/images.js";
+import { io } from "../lib/socket.js";
 import cloudinary from "../lib/cloudinary.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -189,9 +192,98 @@ export const updateProfile = async (req, res) => {
 
 export const checkAuth = (req, res) => {
   try {
-    res.status(200).json(req.user);
+    // null means "not logged in" and is a normal answer, not an error
+    res.status(200).json(req.user ?? null);
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body ?? {};
+
+    if (typeof currentPassword !== "string" || !currentPassword || typeof newPassword !== "string") {
+      return res.status(400).json({ message: "Current and new password are required" });
+    }
+    if (Buffer.byteLength(currentPassword) > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    if (Buffer.byteLength(newPassword) > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ message: "Password is too long (72 characters max)" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isCorrect = await bcrypt.compare(currentPassword, user.password);
+    if (!isCorrect) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: "The new password must be different" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.status(200).json({ message: "Password updated" });
+  } catch (error) {
+    console.log("Error in changePassword controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const { password } = req.body ?? {};
+
+    if (typeof password !== "string" || !password) {
+      return res.status(400).json({ message: "Password is required" });
+    }
+    if (Buffer.byteLength(password) > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ message: "Incorrect password" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isCorrect = await bcrypt.compare(password, user.password);
+    if (!isCorrect) {
+      return res.status(400).json({ message: "Incorrect password" });
+    }
+
+    // collect images first, delete the rows, then clean Cloudinary after answering
+    const withImages = await Message.find({
+      senderId: user._id,
+      image: { $exists: true, $ne: null },
+    })
+      .select("image")
+      .lean();
+
+    await Message.deleteMany({ $or: [{ senderId: user._id }, { receiverId: user._id }] });
+    await User.findByIdAndDelete(user._id);
+
+    // close every open tab of this user
+    io.in(String(user._id)).disconnectSockets(true);
+
+    res.clearCookie("jwt", {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV !== "development",
+    });
+    res.status(200).json({ message: "Account deleted" });
+
+    [user.profilePic, ...withImages.map((m) => m.image)]
+      .filter(Boolean)
+      .forEach((url) => destroyImageByUrl(url));
+  } catch (error) {
+    console.log("Error in deleteAccount controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };

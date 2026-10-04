@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ImagePlus, Loader2, Send, Smile, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, Pencil, Send, Smile, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useChatStore } from "../../store/useChatStore";
+import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { compressImage } from "../../lib/image";
 
 const MAX_LENGTH = 2000;
@@ -25,8 +26,14 @@ const MessageInput = () => {
   const typingRef = useRef({ active: false, timer: null });
 
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const editMessage = useChatStore((s) => s.editMessage);
   const emitTyping = useChatStore((s) => s.emitTyping);
   const peerId = useChatStore((s) => s.selectedUser?._id);
+  const editingMessage = useChatStore((s) => s.editingMessage);
+  const setEditingMessage = useChatStore((s) => s.setEditingMessage);
+  const enterToSend = usePreferencesStore((s) => s.enterToSend);
+
+  const editing = !!editingMessage;
 
   // grow with the content, up to a limit
   useLayoutEffect(() => {
@@ -35,6 +42,23 @@ const MessageInput = () => {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [text]);
+
+  // entering edit mode: load the message into the box
+  useEffect(() => {
+    if (!editingMessage) return;
+    setText(editingMessage.text || "");
+    setImage(null);
+    setShowEmoji(false);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+    // only react when a different message is picked
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMessage?._id]);
 
   const stopTyping = useCallback(() => {
     const typing = typingRef.current;
@@ -67,8 +91,13 @@ const MessageInput = () => {
     };
   }, [peerId, emitTyping]);
 
+  const cancelEdit = () => {
+    setEditingMessage(null);
+    setText("");
+  };
+
   const attachFile = async (file) => {
-    if (!file) return;
+    if (!file || editing) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image.");
       return;
@@ -95,6 +124,7 @@ const MessageInput = () => {
   };
 
   const handlePaste = (e) => {
+    if (editing) return;
     const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
       f.type.startsWith("image/")
     );
@@ -111,6 +141,19 @@ const MessageInput = () => {
 
   const send = async () => {
     const clean = text.trim();
+
+    // saving an edit
+    if (editingMessage) {
+      if (!clean) return;
+      if (clean === editingMessage.text) {
+        cancelEdit();
+        return;
+      }
+      const ok = await editMessage(editingMessage._id, clean);
+      if (ok) cancelEdit();
+      return;
+    }
+
     if ((!clean && !image) || isProcessing) return;
 
     const sentImage = image;
@@ -129,16 +172,46 @@ const MessageInput = () => {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.nativeEvent.isComposing) return;
+
+    if (e.key === "Escape" && editing) {
+      e.preventDefault();
+      cancelEdit();
+      return;
+    }
+    if (e.key !== "Enter") return;
+
+    // Enter sends by default; with the setting off, Ctrl or Cmd + Enter sends
+    const wantsSend = enterToSend ? !e.shiftKey : e.ctrlKey || e.metaKey;
+    if (wantsSend) {
       e.preventDefault();
       send();
     }
   };
 
-  const canSend = (text.trim() || image) && !isProcessing;
+  const canSend = editing ? !!text.trim() : (text.trim() || image) && !isProcessing;
 
   return (
     <div className="relative border-t border-base-300 bg-base-100 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-5">
+      {/* EDIT BANNER */}
+      {editing && (
+        <div className="mx-auto mb-2 flex max-w-4xl items-center gap-3 rounded-2xl border-l-4 border-primary bg-base-200 px-3 py-2">
+          <Pencil className="size-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-primary">Editing message</p>
+            <p className="truncate text-sm text-base-content/70">{editingMessage.text}</p>
+          </div>
+          <button
+            type="button"
+            onClick={cancelEdit}
+            aria-label="Cancel editing"
+            className="btn btn-ghost btn-circle btn-sm"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       {/* IMAGE PREVIEW */}
       {image && (
         <div className="mx-auto mb-3 max-w-4xl">
@@ -197,7 +270,7 @@ const MessageInput = () => {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          disabled={isProcessing}
+          disabled={isProcessing || editing}
           title="Attach an image"
           aria-label="Attach an image"
           className="btn btn-circle btn-ghost shrink-0"
@@ -225,10 +298,11 @@ const MessageInput = () => {
             rows={1}
             maxLength={MAX_LENGTH}
             value={text}
-            placeholder="Type a message..."
-            enterKeyHint="send"
+            placeholder={editing ? "Edit your message..." : "Type a message..."}
+            enterKeyHint={enterToSend ? "send" : "enter"}
             onChange={(e) => {
               setText(e.target.value);
+              if (editing) return;
               if (e.target.value) notifyTyping();
               else stopTyping();
             }}
@@ -241,11 +315,11 @@ const MessageInput = () => {
         <button
           type="submit"
           disabled={!canSend}
-          title="Send"
-          aria-label="Send message"
+          title={editing ? "Save" : "Send"}
+          aria-label={editing ? "Save changes" : "Send message"}
           className="btn btn-circle btn-primary shrink-0 shadow-lg shadow-primary/30 transition-transform active:scale-90 disabled:shadow-none"
         >
-          <Send className="size-5" />
+          {editing ? <Check className="size-5" /> : <Send className="size-5" />}
         </button>
       </form>
 

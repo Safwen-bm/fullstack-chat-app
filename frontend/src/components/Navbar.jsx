@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import {
+import { Link, useLocation, useNavigate } from "react-router-dom";import {
   Info,
   LogOut,
   Menu,
@@ -10,6 +9,7 @@ import {
   Palette,
   Sparkles,
   X,
+  Settings,
 } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -46,6 +46,7 @@ const rowClass = (active) =>
 const Navbar = () => {
   const { logout, authUser } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const path = location.pathname;
   const onLanding = path === "/";
   const inConversation = useChatStore((s) => path === "/chat" && !!s.selectedUser);
@@ -55,6 +56,12 @@ const Navbar = () => {
   const [activeId, setActiveId] = useState("");
 
   const close = () => setOpen(false);
+
+  const handleLogout = async () => {
+    close();
+    const ok = await logout();
+    if (ok) navigate("/");
+  };
 
   // blur / shadow when scrolled, and clear the active section at the top
   useEffect(() => {
@@ -157,6 +164,9 @@ const Navbar = () => {
 
           {authUser ? (
             <>
+              <NavPill to="/settings" active={path === "/settings"} title="Settings">
+                <Settings className="size-4" />
+              </NavPill>
               <NavPill to="/chat" active={path === "/chat"} title="Chat">
                 <MessagesSquare className="size-4" />
                 <span className="hidden xl:inline">Chat</span>
@@ -175,7 +185,7 @@ const Navbar = () => {
               </NavPill>
 
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 title="Logout"
                 className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-error transition-all hover:bg-error/10 active:scale-95"
               >
@@ -251,14 +261,18 @@ const Navbar = () => {
               </Link>
             )}
 
+            {authUser && (
+              <Link to="/settings" onClick={close} className={rowClass(path === "/settings")}>
+                <Settings className="size-5" />
+                Settings
+              </Link>
+            )}
+
             <ThemeSwitcher variant="inline" />
 
             {authUser && (
               <button
-                onClick={() => {
-                  close();
-                  logout();
-                }}
+                onClick={handleLogout}
                 className={`${rowClass(false)} text-error hover:bg-error/10`}
               >
                 <LogOut className="size-5" />

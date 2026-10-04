@@ -26,6 +26,7 @@ const ConversationItem = memo(function ConversationItem({
 
   let preview = "Say hi 👋";
   if (isTyping) preview = "typing...";
+  else if (last?.deleted) preview = "🚫 Message deleted";
   else if (last) preview = `${mine ? "You: " : ""}${last.text || (last.hasImage ? "📷 Photo" : "")}`;
 
   return (
